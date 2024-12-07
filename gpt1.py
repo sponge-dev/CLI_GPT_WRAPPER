@@ -10,31 +10,46 @@ def main():
         sys.exit(1)
     openai.api_key = api_key
 
-    # Ensure that the user has provided a prompt
+    # Check if the user has provided an initial prompt
     if len(sys.argv) < 2:
         print("Usage: ./chatgpt_cli.py 'Your prompt here'")
         sys.exit(1)
 
-    # Join all command-line arguments into one prompt string 
-    # (in case the user provided multiple words).
+    # Join all command-line arguments into one initial prompt string
     user_prompt = " ".join(sys.argv[1:])
 
-    try:
-        # Create a chat completion using the gpt-4o
-        response = openai.ChatCompletion.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": user_prompt}],
-            temperature=0.7,
-            max_tokens=512
-        )
+    # Initialize the conversation history
+    conversation_history = [{"role": "user", "content": user_prompt}]
 
-        # The response content is in response.choices[0].message.content
-        answer = response.choices[0].message.content.strip()
-        print(answer)
+    while True:
+        try:
+            # Create a chat completion using the conversation history
+            response = openai.ChatCompletion.create(
+                model="gpt-4o",
+                messages=conversation_history,
+                temperature=0.7,
+                max_tokens=512
+            )
 
-    except Exception as e:
-        print(f"Error: {e}")
-        sys.exit(1)
+            # The response content is in response.choices[0].message.content
+            answer = response.choices[0].message.content.strip()
+            print(f"AI: {answer}")
+
+            # Append the AI's response to the conversation history
+            conversation_history.append({"role": "assistant", "content": answer})
+
+            # Ask the user for a follow-up question or allow them to exit
+            follow_up = input("\nYou: ")
+            if follow_up.lower() in ["exit", "quit", "q"]:
+                print("Goodbye!")
+                break
+
+            # Append the user's follow-up to the conversation history
+            conversation_history.append({"role": "user", "content": follow_up})
+
+        except Exception as e:
+            print(f"Error: {e}")
+            sys.exit(1)
 
 if __name__ == "__main__":
     main()
