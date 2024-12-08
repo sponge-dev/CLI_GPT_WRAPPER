@@ -4,6 +4,7 @@ import openai
 import time
 import threading
 from colorama import Fore, Style, init
+import requests.exceptions
 
 # Initialize colorama
 init(autoreset=True)
@@ -17,30 +18,39 @@ def loading_animation(stop_event):
         idx += 1
         time.sleep(0.1)
 
-def fetch_response_with_animation(conversation_history):
-    stop_event = threading.Event()
-    loading_thread = threading.Thread(target=loading_animation, args=(stop_event,))
+def fetch_response_with_retry(conversation_history, retries=2, timeout=13):
+    for attempt in range(retries + 1):  # Initial attempt + retries
+        stop_event = threading.Event()
+        loading_thread = threading.Thread(target=loading_animation, args=(stop_event,))
+        try:
+            # Start the loading animation
+            loading_thread.start()
 
-    try:
-        # Start the loading animation
-        loading_thread.start()
+            # Time-limited API request
+            response = openai.ChatCompletion.create(
+                model="gpt-4o",
+                messages=conversation_history,
+                temperature=0.7,
+                max_tokens=1000,
+                request_timeout=timeout  # Explicit timeout parameter
+            )
+            return response.choices[0].message.content.strip()
+        except openai.error.Timeout as e:
+            print(f"{Fore.RED}Request timed out: {e}. Retrying... ({attempt + 1}/{retries}){Style.RESET_ALL}")
+        except requests.exceptions.Timeout as e:
+            print(f"{Fore.RED}Connection timeout: {e}. Retrying... ({attempt + 1}/{retries}){Style.RESET_ALL}")
+        except Exception as e:
+            print(f"{Fore.RED}Error: {e}. Retrying... ({attempt + 1}/{retries}){Style.RESET_ALL}")
+        finally:
+            stop_event.set()
+            loading_thread.join()
+            print("\r", end="")  # Clear the loading line
 
-        # Fetch the response
-        response = openai.ChatCompletion.create(
-            model="gpt-4o",
-            messages=conversation_history,
-            temperature=0.7,
-            max_tokens=1000
-        )
-        return response.choices[0].message.content.strip()
-    finally:
-        # Stop the loading animation
-        stop_event.set()
-        loading_thread.join()
-        print("\r", end="")  # Clear the loading line
+        if attempt == retries:  # If the last attempt fails
+            raise Exception("Failed to fetch response after multiple attempts.")
 
 def main():
-    # Ensure the API key is set, use export OPENAI_API_KEY="sk-..." to set, put in your ~/.bashrc file to save.
+    # Ensure the API key is set
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         print(f"{Fore.RED}Error: OPENAI_API_KEY environment variable not set.{Style.RESET_ALL}")
@@ -63,8 +73,8 @@ def main():
 
     while True:
         try:
-            # Fetch the AI's response with a loading animation
-            answer = fetch_response_with_animation(conversation_history)
+            # Fetch the AI's response with retry mechanism
+            answer = fetch_response_with_retry(conversation_history)
             print(f"{Fore.CYAN}AI: {answer}{Style.RESET_ALL}")
 
             # Append the AI's response to the conversation history
