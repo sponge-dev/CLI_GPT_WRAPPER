@@ -1,10 +1,43 @@
 import os
 import sys
 import openai
+import time
+import threading
 from colorama import Fore, Style, init
 
 # Initialize colorama
 init(autoreset=True)
+
+# Define a simple loading animation
+def loading_animation(stop_event):
+    animation = "|/-\\"
+    idx = 0
+    while not stop_event.is_set():
+        print(f"\r{Fore.YELLOW}Fetching response... {animation[idx % len(animation)]}{Style.RESET_ALL}", end="")
+        idx += 1
+        time.sleep(0.1)
+
+def fetch_response_with_animation(conversation_history):
+    stop_event = threading.Event()
+    loading_thread = threading.Thread(target=loading_animation, args=(stop_event,))
+
+    try:
+        # Start the loading animation
+        loading_thread.start()
+
+        # Fetch the response
+        response = openai.ChatCompletion.create(
+            model="gpt-4o",
+            messages=conversation_history,
+            temperature=0.7,
+            max_tokens=1000
+        )
+        return response.choices[0].message.content.strip()
+    finally:
+        # Stop the loading animation
+        stop_event.set()
+        loading_thread.join()
+        print("\r", end="")  # Clear the loading line
 
 def main():
     # Ensure the API key is set, use export OPENAI_API_KEY="sk-..." to set, put in your ~/.bashrc file to save.
@@ -30,16 +63,8 @@ def main():
 
     while True:
         try:
-            # Create a chat completion using the conversation history
-            response = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=conversation_history,
-                temperature=0.7,
-                max_tokens=512
-            )
-
-            # The response content is in response.choices[0].message.content
-            answer = response.choices[0].message.content.strip()
+            # Fetch the AI's response with a loading animation
+            answer = fetch_response_with_animation(conversation_history)
             print(f"{Fore.CYAN}AI: {answer}{Style.RESET_ALL}")
 
             # Append the AI's response to the conversation history
@@ -54,6 +79,9 @@ def main():
             # Append the user's follow-up to the conversation history
             conversation_history.append({"role": "user", "content": follow_up})
 
+        except KeyboardInterrupt:
+            print(f"\n{Fore.YELLOW}Goodbye!{Style.RESET_ALL}")
+            break
         except Exception as e:
             print(f"{Fore.RED}Error: {e}{Style.RESET_ALL}")
             sys.exit(1)
